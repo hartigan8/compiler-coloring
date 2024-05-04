@@ -11,3 +11,9 @@ int main(){
     }
     return 1;
 }
+int test(){
+    int b = 1;
+    int a = 2;
+    int c = a + b;
+    return c;
+}
