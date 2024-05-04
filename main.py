@@ -4,8 +4,6 @@ import clang.cindex
 
 
 
-
-
 class Function:
     def __init__(self, name):
         self.name = name
@@ -58,6 +56,10 @@ def main():
     functions = {}
     index = clang.cindex.Index.create()
     tu = index.parse("test.c", args=['-x', 'c'])
+
+    if tu.diagnostics:
+        raise Exception(tu.diagnostics)
+    
     traverse(tu.cursor, functions)
     for func in functions.values():
         func.print()
