@@ -1,6 +1,6 @@
 import sys
 import clang.cindex
-
+import networkx as nx
 
 
 
@@ -18,7 +18,7 @@ class Function:
             if line.number == number:
                 return line
         return None
-    
+
 
 class Line:
     def __init__(self, decl, number,return_stmt):
@@ -32,10 +32,18 @@ class Line:
 
 
 def traverse(node, functions, current_func = ""):
+    
+    
+    if(node.kind == clang.cindex.CursorKind.IF_STMT):
+        children = list(node.get_children())
+        print(node.location.line)
+        for child in children:
+            print(f"{child.kind} {child.displayname} {child.location.line} {child.location.offset}")
+
     if(node.kind == clang.cindex.CursorKind.FUNCTION_DECL):
         functions[node.spelling] = Function(node.displayname)
         current_func = node.spelling
-        
+
     if(node.kind == clang.cindex.CursorKind.RETURN_STMT):
         functions[current_func].lines.append(Line(node.displayname, node.location.line,True))
         
@@ -57,9 +65,13 @@ def main():
     index = clang.cindex.Index.create()
     tu = index.parse("test.c", args=['-x', 'c'])
 
+
+
     if tu.diagnostics:
         raise Exception(tu.diagnostics)
-    
+
+
+
     traverse(tu.cursor, functions)
     for func in functions.values():
         func.print()
