@@ -10,5 +10,5 @@ int main(){
     b = d + e;
     e = e -1;
     b = f + c;
-    return b;
+    return a/b;
 }

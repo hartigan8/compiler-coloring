@@ -103,10 +103,15 @@ def traverse(node, functions, parent=None, depth = 0, current_func = ""):
 
         
 
-    if(node.kind == clang.cindex.CursorKind.RETURN_STMT):
-        functions[current_func].lines.append(Line(node.displayname, node.location.line, True))
-    
-    
+    if(node.kind == clang.cindex.CursorKind.RETURN_STMT):   
+        children = node.get_tokens()
+        line = Line(node.displayname, node.location.line,True)
+        for child in children:
+            if child.kind == clang.cindex.TokenKind.IDENTIFIER:
+                line.refs.append(child.spelling)    
+                print(child.spelling)
+        functions[current_func].lines.append(line)
+
     if  node.kind == clang.cindex.CursorKind.VAR_DECL:
         functions[current_func].lines.append(Line(node.displayname, node.location.line, False))
         functions[current_func].decl_list.append(node.displayname)
