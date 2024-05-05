@@ -1,8 +1,8 @@
 import clang.cindex
 import networkx as nx
 import matplotlib.pyplot as plt
-
-
+import tkinter as tk
+from tkinter import filedialog
 class Function:
     def __init__(self, name):
         self.name = name
@@ -172,6 +172,43 @@ def to_graph(functions):
     nx.draw(G, with_labels=True, node_color=node_colors, cmap=plt.cm.jet)
     plt.show()
 
+class gui:
+    def browseFiles():
+        filename = filedialog.askopenfilename(initialdir = "/",  title = "Select c File",filetypes = (("C files",  "*.c")))
+        
+
+    def __init__(self):
+        window = tk.Tk()
+        self.button = tk.Button(window, 
+                   text="Click Me", 
+                   command=self.createGui,
+                   activebackground="blue", 
+                   activeforeground="white",
+                   anchor="center",
+                   bd=3,
+                   bg="lightgray",
+                   cursor="hand2",
+                   disabledforeground="gray",
+                   fg="black",
+                   font=("Arial", 12),
+                   height=2,
+                   highlightbackground="black",
+                   highlightcolor="green",
+                   highlightthickness=2,
+                   justify="center",
+                   overrelief="raised",
+                   padx=10,
+                   pady=5,
+                   width=15,
+                   wraplength=100)
+
+        self.button.pack(padx=20, pady=20)
+
+
+
+        window.mainloop()
+     
+
 
 
 def main():
@@ -187,7 +224,7 @@ def main():
     traverse(tu.cursor, functions)
     liveliness_analysis(functions)
     to_graph(functions)
-
+   
 
 if __name__ == '__main__':
     main()
