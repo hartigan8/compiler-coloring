@@ -1,8 +1,7 @@
 import clang.cindex
 import networkx as nx
 import matplotlib.pyplot as plt
-import tkinter as tk
-from tkinter import filedialog
+
 class Function:
     def __init__(self, name):
         self.name = name
@@ -75,8 +74,6 @@ def process_compound_assignment(node, functions, current_func, line):
             if child.spelling not in line.refs:
                 line.refs.append(child.spelling)
         process_compound_assignment(child, functions, current_func, line)
-        print(child.location.line)
-        print(f"{child.spelling} {child.kind}")
 
 
 def traverse(node, functions, parent=None, depth = 0, current_func = ""):
@@ -109,7 +106,6 @@ def traverse(node, functions, parent=None, depth = 0, current_func = ""):
         for child in children:
             if child.kind == clang.cindex.TokenKind.IDENTIFIER:
                 line.refs.append(child.spelling)    
-                print(child.spelling)
         functions[current_func].lines.append(line)
 
     if  node.kind == clang.cindex.CursorKind.VAR_DECL:
@@ -155,6 +151,7 @@ def liveliness_analysis(functions):
         
 
 def to_graph(functions):
+    plt.figure()
     G = nx.Graph()
     for func in functions.values():
         decl_list = func.decl_list
@@ -171,50 +168,14 @@ def to_graph(functions):
 
     nx.draw(G, with_labels=True, node_color=node_colors, cmap=plt.cm.jet)
     plt.show()
-
-class gui:
-    def browseFiles():
-        filename = filedialog.askopenfilename(initialdir = "/",  title = "Select c File",filetypes = (("C files",  "*.c")))
-        
-
-    def __init__(self):
-        window = tk.Tk()
-        self.button = tk.Button(window, 
-                   text="Click Me", 
-                   command=self.createGui,
-                   activebackground="blue", 
-                   activeforeground="white",
-                   anchor="center",
-                   bd=3,
-                   bg="lightgray",
-                   cursor="hand2",
-                   disabledforeground="gray",
-                   fg="black",
-                   font=("Arial", 12),
-                   height=2,
-                   highlightbackground="black",
-                   highlightcolor="green",
-                   highlightthickness=2,
-                   justify="center",
-                   overrelief="raised",
-                   padx=10,
-                   pady=5,
-                   width=15,
-                   wraplength=100)
-
-        self.button.pack(padx=20, pady=20)
+    return plt
 
 
 
-        window.mainloop()
-     
-
-
-
-def main():
+def main(file_path):
     functions = {}
     index = clang.cindex.Index.create()
-    tu = index.parse("test.c", args=['-x', 'c'])
+    tu = index.parse(file_path, args=['-x', 'c'])
 
     if tu.diagnostics:
         for dig in tu.diagnostics:
@@ -223,8 +184,8 @@ def main():
 
     traverse(tu.cursor, functions)
     liveliness_analysis(functions)
-    to_graph(functions)
-   
+    plt = to_graph(functions)
+    return plt
 
 if __name__ == '__main__':
-    main()
+    main("test.c")
