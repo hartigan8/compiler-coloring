@@ -2,15 +2,23 @@ import clang.cindex
 import networkx as nx
 import matplotlib.pyplot as plt
 
+class Line:
+    def __init__(self, decl, number, return_stmt):
+        self.decl = decl
+        self.refs = []
+        self.number = number
+        self.return_stmt = return_stmt
+
+
 class Function:
     def __init__(self, name):
         self.name = name
-        self.lines = []
+        self.lines = nx.DiGraph()
         self.alive_values = []
         self.decl_list = []
     
     def print(self):
-        for line in self.lines:
+        for line in self.topological_order:
             print("line: %d, decl: %s, refs: %s , return: %s" % (line.number, line.decl, line.refs, line.return_stmt))
 
     def find_line(self,number):
@@ -19,15 +27,27 @@ class Function:
                 return line
         return None
     def reverse(self):
-        self.lines.reverse()
+        self.lines = self.lines.reverse(copy=True)
     
+    def add_line(self, previous_line, line):
+        # Ensure the line is added as a node first
+        if line not in self.lines:
+            self.lines.add_node(line)
 
-class Line:
-    def __init__(self, decl, number, return_stmt):
-        self.decl = decl
-        self.refs = []
-        self.number = number
-        self.return_stmt = return_stmt
+        # If there is a previous line, connect it
+        if previous_line is not None:
+            self.lines.add_edge(previous_line, line)
+        
+
+    @property
+    def topological_order(self):
+        try:
+            return list(nx.topological_sort(self.lines))
+        except nx.NetworkXUnfeasible:
+            print("Graph has a cycle and cannot be topologically sorted.")
+            return []
+
+
 
     
 def process_rhs(node, line):
@@ -37,7 +57,7 @@ def process_rhs(node, line):
     for child in rhs_children:
         process_rhs(child, line)
 
-def process_binary_operator(node, line):
+def process_binary_operator(node):
     tokens = node.get_tokens()
     for token in tokens:
         if(token.spelling == "="):
@@ -76,13 +96,14 @@ def process_compound_assignment(node, functions, current_func, line):
         process_compound_assignment(child, functions, current_func, line)
 
 
-def traverse(node, functions, parent=None, depth = 0, current_func = ""):
+
+def traverse(node, functions, current_func = "", previous_line = None):
+    line = None
 
     if node.kind == clang.cindex.CursorKind.BINARY_OPERATOR:
-        
-        line = process_binary_operator(node, None)
-        if line:
-            functions[current_func].lines.append(line)
+        line = process_binary_operator(node)
+        if line is not None:
+            functions[current_func].add_line(previous_line, line)
 
     # get first child of the node
     if node.kind == clang.cindex.CursorKind.COMPOUND_ASSIGNMENT_OPERATOR:
@@ -91,14 +112,9 @@ def traverse(node, functions, parent=None, depth = 0, current_func = ""):
         expression = next(children)
         line = Line(child.spelling, node.location.line, False)
         line.refs.append(child.spelling)
-        functions[current_func].lines.append(line)
+        functions[current_func].add_line(previous_line, line)
+
         process_compound_assignment(expression, functions, current_func, line)
-
-    if(node.kind == clang.cindex.CursorKind.FUNCTION_DECL):
-        functions[node.spelling] = Function(node.displayname)
-        current_func = node.spelling
-
-        
 
     if(node.kind == clang.cindex.CursorKind.RETURN_STMT):   
         children = node.get_tokens()
@@ -106,18 +122,31 @@ def traverse(node, functions, parent=None, depth = 0, current_func = ""):
         for child in children:
             if child.kind == clang.cindex.TokenKind.IDENTIFIER:
                 line.refs.append(child.spelling)    
-        functions[current_func].lines.append(line)
+        functions[current_func].add_line(previous_line, line)
+    if node.kind == clang.cindex.CursorKind.DECL_STMT:
+        children = node.get_children()
+        for child in children:
 
-    if  node.kind == clang.cindex.CursorKind.VAR_DECL:
-        functions[current_func].lines.append(Line(node.displayname, node.location.line, False))
-        functions[current_func].decl_list.append(node.displayname)
-        process_var_decl(node, functions, current_func)
+            if  child.kind == clang.cindex.CursorKind.VAR_DECL:
+                line = Line(child.displayname, child.location.line, False)
+                functions[current_func].add_line(previous_line, line)
 
+                functions[current_func].decl_list.append(child.displayname)
+                process_var_decl(child, functions, current_func)
+    
+    return line
+    
+    
+def process_function(node, functions):
+    if(node.kind == clang.cindex.CursorKind.FUNCTION_DECL):
+        functions[node.spelling] = Function(node.displayname)
+        current_func = node.spelling
+        previous_line = None
+        cmp_stm = next(node.get_children())
+        for child in cmp_stm.get_children():
+            previous_line = traverse(child, functions, current_func, previous_line)
     for child in node.get_children():
-        traverse(child, functions, node, depth, current_func)
-    
-    
-
+        process_function(child, functions)
 
 def liveliness_analysis(functions):
     vals = list(functions.values())
@@ -127,7 +156,7 @@ def liveliness_analysis(functions):
         func.reverse()
         func.print()
         i = 0
-        for line in func.lines:
+        for line in func.topological_order:
             if len(alive_values) == 0:
                 alive_values.append(line.refs)
             else:
@@ -151,9 +180,9 @@ def liveliness_analysis(functions):
         
 
 def to_graph(functions):
-    plt.figure()
-    G = nx.Graph()
     for func in functions.values():
+        plt.figure()  # create a new figure for each function
+        G = nx.Graph()
         decl_list = func.decl_list
         for decl in decl_list:
             G.add_node(decl)
@@ -163,11 +192,12 @@ def to_graph(functions):
                         if decl2 != decl:
                             G.add_edge(decl, decl2)
     
-    colors = nx.coloring.greedy_color(G)
-    node_colors = [colors[n] for n in G.nodes()]
+        colors = nx.coloring.greedy_color(G)
+        node_colors = [colors[n] for n in G.nodes()]
 
-    nx.draw(G, with_labels=True, node_color=node_colors, cmap=plt.cm.jet)
-    plt.show()
+        nx.draw(G, with_labels=True, node_color=node_colors, cmap=plt.cm.jet)
+
+    plt.show()  # show all figures at once
     return plt
 
 
@@ -182,7 +212,7 @@ def main(file_path):
             print(dig)
         raise Exception(tu.diagnostics)
 
-    traverse(tu.cursor, functions)
+    process_function(tu.cursor, functions)
     liveliness_analysis(functions)
     plt = to_graph(functions)
     return plt
