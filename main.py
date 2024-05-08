@@ -19,7 +19,12 @@ class Function:
     
     def print(self):
         for line in self.topological_order:
-            print("line: %d, decl: %s, refs: %s , return: %s" % (line.number, line.decl, line.refs, line.return_stmt))
+            if type(line) == clang.cindex.Cursor:
+                print(f"line: {line.location.line}, kind: {line.kind}")
+            if line.number is not None:
+                print("line: %d, decl: %s, refs: %s , return: %s" % (line.number, line.decl, line.refs, line.return_stmt))
+            
+
 
     def find_line(self,number):
         for line in self.lines:
@@ -76,15 +81,13 @@ def process_binary_operator(node):
             return line
 
 
-def process_var_decl(node, functions, current_func):
+def process_var_decl(node, functions, current_func, line):
     if node.kind == clang.cindex.CursorKind.DECL_REF_EXPR:
         fun = functions[current_func]
-        line = fun.find_line(node.location.line)
-        if line:
-            line.refs.append(node.displayname)
+        line.refs.append(node.displayname)
     children = node.get_children()
     for child in children:
-        process_var_decl(child, functions, current_func)
+        process_var_decl(child, functions, current_func, line)
 
 
 def process_compound_assignment(node, functions, current_func, line):
@@ -132,8 +135,32 @@ def traverse(node, functions, current_func = "", previous_line = None):
                 functions[current_func].add_line(previous_line, line)
 
                 functions[current_func].decl_list.append(child.displayname)
-                process_var_decl(child, functions, current_func)
+                process_var_decl(child, functions, current_func, line)
     
+    if node.kind == clang.cindex.CursorKind.COMPOUND_STMT:
+        children = node.get_children()
+        for child in children:
+            line = traverse(child, functions, current_func, previous_line)
+            functions[current_func].add_line(previous_line, line)
+            previous_line = line
+    # 1. if statement
+    # 2. inside of if
+    # 3. else statement -> compound statement, else if -> if statement
+    if node.kind == clang.cindex.CursorKind.IF_STMT:
+        end_line = Line(None, None, False)
+        children = node.get_children()
+        inside_of_if = next(children)
+        line = traverse(inside_of_if, functions, current_func, previous_line)
+
+        functions[current_func].add_line(previous_line, line)
+        functions[current_func].add_line(line, end_line)
+        for child in children:
+            line = traverse(child, functions, current_func, line)
+            functions[current_func].add_line(inside_of_if, line)
+            functions[current_func].add_line(line, end_line)
+
+        line = end_line
+
     return line
     
     
@@ -150,8 +177,10 @@ def process_function(node, functions):
 
 def liveliness_analysis(functions):
     vals = list(functions.values())
-
+    
     for func in vals:
+        nx.draw(func.lines, cmap=plt.cm.jet)
+        plt.show()
         alive_values = []
         func.reverse()
         func.print()

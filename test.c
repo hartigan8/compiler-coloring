@@ -5,6 +5,12 @@ int test(){
     int c = 3;
     a = b + c;
     int d = - a;
+    if (a > b){
+        a = b + 1;
+    }
+    else{
+        a = c - 1;
+    }
     int f = 5;
     int e = d + f + a + b;
     return a/b;
