@@ -81,6 +81,7 @@ def process_binary_operator(node):
             return line
 
 
+
 def process_var_decl(node, functions, current_func, line):
     if node.kind == clang.cindex.CursorKind.DECL_REF_EXPR:
         fun = functions[current_func]
@@ -97,7 +98,6 @@ def process_compound_assignment(node, functions, current_func, line):
             if child.spelling not in line.refs:
                 line.refs.append(child.spelling)
         process_compound_assignment(child, functions, current_func, line)
-
 
 
 def traverse(node, functions, current_func = "", previous_line = None):
@@ -150,13 +150,13 @@ def traverse(node, functions, current_func = "", previous_line = None):
         end_line = Line(None, None, False)
         children = node.get_children()
         inside_of_if = next(children)
-        line = traverse(inside_of_if, functions, current_func, previous_line)
-
-        functions[current_func].add_line(previous_line, line)
-        functions[current_func].add_line(line, end_line)
+        if_line = Line(None, inside_of_if.location.line, False)
+        process_rhs(inside_of_if, if_line)
+        functions[current_func].add_line(previous_line, if_line)
+        functions[current_func].add_line(if_line, end_line)
         for child in children:
-            line = traverse(child, functions, current_func, line)
-            functions[current_func].add_line(inside_of_if, line)
+            line = traverse(child, functions, current_func, if_line)
+            functions[current_func].add_line(if_line, line)
             functions[current_func].add_line(line, end_line)
 
         line = end_line
