@@ -16,14 +16,13 @@ class Function:
         self.lines = nx.DiGraph()
         self.alive_values = []
         self.decl_list = []
+        self.last_line = None
     
     def print(self):
         for line in self.topological_order:
-            if type(line) == clang.cindex.Cursor:
-                print(f"line: {line.location.line}, kind: {line.kind}")
             if line.number is not None:
                 print("line: %d, decl: %s, refs: %s , return: %s" % (line.number, line.decl, line.refs, line.return_stmt))
-            
+
 
 
     def find_line(self,number):
@@ -42,7 +41,7 @@ class Function:
         # If there is a previous line, connect it
         if previous_line is not None:
             self.lines.add_edge(previous_line, line)
-        
+        self.last_line = line
 
     @property
     def topological_order(self):
@@ -153,12 +152,17 @@ def traverse(node, functions, current_func = "", previous_line = None):
         if_line = Line(None, inside_of_if.location.line, False)
         process_rhs(inside_of_if, if_line)
         functions[current_func].add_line(previous_line, if_line)
-        functions[current_func].add_line(if_line, end_line)
+        
+
+        if_exist = False
         for child in children:
             line = traverse(child, functions, current_func, if_line)
             functions[current_func].add_line(if_line, line)
             functions[current_func].add_line(line, end_line)
-
+            if child.kind == clang.cindex.CursorKind.IF_STMT:
+                if_exist = True
+        if if_exist:
+            functions[current_func].add_line(if_line, end_line)
         line = end_line
 
     return line
@@ -175,37 +179,41 @@ def process_function(node, functions):
     for child in node.get_children():
         process_function(child, functions)
 
+
+def traverse_lines(func, line, previous_alive, alive_values):
+    prev = []
+    if len(alive_values) == 0:
+        prev = line.refs
+        alive_values.append(line.refs)
+    else:
+        if line.decl in previous_alive:
+            prev = previous_alive.copy()
+            prev.remove(line.decl)
+            for ref in line.refs:
+                if ref not in prev:
+                    prev.append(ref)
+            alive_values.append(prev)
+        else:
+            prev = previous_alive.copy()
+            for ref in line.refs:
+                if ref not in prev:
+                    prev.append(ref)
+            alive_values.append(prev)
+    
+    in_edges = func.lines.in_edges(line, data=False)
+    for u, v in in_edges:
+        traverse_lines(func, u, prev, alive_values)
+
 def liveliness_analysis(functions):
     vals = list(functions.values())
-    
     for func in vals:
         nx.draw(func.lines, cmap=plt.cm.jet)
         plt.show()
-        alive_values = []
-        func.reverse()
-        func.print()
-        i = 0
-        for line in func.topological_order:
-            if len(alive_values) == 0:
-                alive_values.append(line.refs)
-            else:
-                if line.decl in alive_values[i - 1]:
-                    prev = alive_values[i - 1].copy()
-                    prev.remove(line.decl)
-                    for ref in line.refs:
-                        if ref not in prev:
-                            prev.append(ref)
-                    alive_values.append(prev)
-                else:
-                    prev = alive_values[i - 1].copy()
-                    for ref in line.refs:
-                        if ref not in prev:
-                            prev.append(ref)
-                    alive_values.append(prev)
-            i = i + 1
-        func.alive_values = alive_values
-        print(alive_values)
-        print("\n")
+
+        in_edges = func.lines.in_edges(func.last_line, data=False)
+        for u, v in in_edges:
+            traverse_lines(func, u, [], func.alive_values)
+
         
 
 def to_graph(functions):
